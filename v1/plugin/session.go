@@ -3,37 +3,20 @@ package plugin
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"net"
 	"net/http"
 	"time"
 
 	"net/http/pprof"
 
-	logger "github.com/Sirupsen/logrus"
+	log "github.com/Sirupsen/logrus"
 	"github.com/julienschmidt/httprouter"
-)
-
-var (
-	pprofPort  = "0"
-	configIn   = ""
-	standAlone = false
-	httpPort   = 0
-	arg        = Arg{
-		LogLevel:            uint8(2),
-		PingTimeoutDuration: time.Millisecond * 1500,
-		ListenPort:          "0",
-		Pprof:               false,
-		CertPath:            "",
-		KeyPath:             "",
-		TLSEnabled:          false,
-	}
 )
 
 // Arg represents arguments passed to startup of Plugin
 type Arg struct {
 	// Plugin log level, see logrus.Loglevel
-	LogLevel uint8
+	LogLevel int
 	// Ping timeout duration
 	PingTimeoutDuration time.Duration
 
@@ -61,19 +44,16 @@ func getArgs() (*Arg, error) {
 	if len(osArgs) > 1 && osArgs[1] != "" {
 		paramStr = osArgs[1]
 	}
-	err := json.Unmarshal([]byte(paramStr), &arg)
-	logger.Errorf("!!!!!!!!! timeout: %v", arg.PingTimeoutDuration)
-
-	logger.Errorf("!!!!!!!!! err=%v", err)
-
-	if arg.Pprof {
-		return &arg, getPort()
+	arg := &Arg{}
+	err := json.Unmarshal([]byte(paramStr), arg)
+	if err != nil {
+		return nil, err
 	}
 
-	return &arg, nil
+	return arg, nil
 }
 
-func getPort() error {
+func startPprof() (string, error) {
 	router := httprouter.New()
 	router.GET("/debug/pprof/", index)
 	router.GET("/debug/pprof/block", index)
@@ -86,20 +66,19 @@ func getPort() error {
 	router.GET("/debug/pprof/trace", trace)
 	addr, err := net.ResolveTCPAddr("tcp", ":0")
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	l, err := net.ListenTCP("tcp", addr)
 	if err != nil {
-		return err
+		return "", err
 	}
-	pprofPort = fmt.Sprintf("%d", l.Addr().(*net.TCPAddr).Port)
 
 	go func() {
 		log.Fatal(http.Serve(l, router))
 	}()
 
-	return nil
+	return fmt.Sprintf("%d", l.Addr().(*net.TCPAddr).Port), nil
 }
 
 func index(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {

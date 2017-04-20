@@ -23,9 +23,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
-	"flag"
 	"fmt"
-	"log"
 	"net"
 	"net/http"
 	"os"
@@ -35,12 +33,47 @@ import (
 
 	"runtime"
 
+	log "github.com/Sirupsen/logrus"
 	"github.com/urfave/cli"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 
 	"github.com/intelsdi-x/snap-plugin-lib-go/v1/plugin/rpc"
 )
+
+var (
+	app     *cli.App
+	appArgs struct {
+		plugin  Plugin
+		name    string
+		version int
+		opts    []MetaOpt
+	}
+)
+
+func init() {
+	app = cli.NewApp()
+	app.Flags = []cli.Flag{
+		flConfig,
+		flPort,
+		flPingTimeout,
+		flPprof,
+		flTLS,
+		flCertPath,
+		flKeyPath,
+		flStandAlone,
+		flHTTPPort,
+		flLogLevel,
+	}
+	app.Action = startPlugin
+}
+
+// AddFlag accepts a cli.Flag to the plugins standard flags.
+func AddFlag(flags ...cli.Flag) {
+	for _, f := range flags {
+		app.Flags = append(app.Flags, f)
+	}
+}
 
 // Plugin is the base plugin type. All plugins must implement GetConfigPolicy.
 type Plugin interface {
@@ -98,6 +131,8 @@ type StreamCollector interface {
 	GetMetricTypes(Config) ([]Metric, error)
 }
 
+var getOSArgs = func() []string { return os.Args }
+
 // tlsServerSetup offers functions supporting TLS server setup
 type tlsServerSetup interface {
 	// makeTLSConfig delivers TLS config suitable to use for plugins, excluding
@@ -111,16 +146,48 @@ type tlsServerSetup interface {
 }
 
 // osInputOutput supports interactions with OS for the plugin lib
-type osInputOutput interface {
+type OSInputOutput interface {
 	// readOSArgs gets command line arguments passed to application
 	readOSArgs() []string
 	// printOut outputs given data to application standard output
 	printOut(data string)
+
+	args() int
+
+	setContext(c *cli.Context)
 }
 
 // standardInputOutput delivers standard implementation for OS
 // interactions
 type standardInputOutput struct {
+	context *cli.Context
+}
+
+// libInputOutput holds utility used for OS interactions
+var libInputOutput OSInputOutput = &standardInputOutput{}
+
+// readOSArgs implementation that returns application args passed by OS
+func (io *standardInputOutput) readOSArgs() []string {
+	if io.context != nil {
+		return io.context.Args().Tail()
+	}
+	return os.Args
+}
+
+// printOut implementation that emits data into standard output
+func (io *standardInputOutput) printOut(data string) {
+	fmt.Println(data)
+}
+
+func (io *standardInputOutput) setContext(c *cli.Context) {
+	io.context = c
+}
+
+func (io *standardInputOutput) args() int {
+	if io.context != nil {
+		return io.context.NArg()
+	}
+	return 0
 }
 
 // tlsServerDefaultSetup provides default implementation for TLS setup routines
@@ -129,9 +196,6 @@ type tlsServerDefaultSetup struct {
 
 // tlsSetup holds TLS setup utility for plugin lib
 var tlsSetup tlsServerSetup = tlsServerDefaultSetup{}
-
-// libInputOutput holds utility used for OS interactions
-var libInputOutput osInputOutput = standardInputOutput{}
 
 // makeTLSConfig provides TLS configuraton template for plugins, setting
 // required verification of client cert and preferred server suites.
@@ -155,16 +219,6 @@ func (ts tlsServerDefaultSetup) readRootCAs() (*x509.CertPool, error) {
 // updateServerOptions a standard implementation delivers no additional options
 func (ts tlsServerDefaultSetup) updateServerOptions(options ...grpc.ServerOption) []grpc.ServerOption {
 	return options
-}
-
-// readOSArgs implementation that returns application args passed by OS
-func (io standardInputOutput) readOSArgs() []string {
-	return os.Args
-}
-
-// printOut implementation that emits data into standard output
-func (io standardInputOutput) printOut(data string) {
-	fmt.Println(data)
 }
 
 // makeGRPCCredentials delivers credentials object suitable for setting up gRPC
@@ -210,14 +264,10 @@ func applySecurityArgsToMeta(m *meta, args *Arg) error {
 
 // buildGRPCServer configures and builds GRPC server ready to server a plugin
 // instance
-func buildGRPCServer(typeOfPlugin pluginType, name string, version int, opts ...MetaOpt) (server *grpc.Server, m *meta, err error) {
-	args, err := getArgs()
-	if err != nil {
-		return nil, nil, err
-	}
+func buildGRPCServer(typeOfPlugin pluginType, name string, version int, arg *Arg, opts ...MetaOpt) (server *grpc.Server, m *meta, err error) {
 	m = newMeta(typeOfPlugin, name, version, opts...)
 
-	if err := applySecurityArgsToMeta(m, args); err != nil {
+	if err := applySecurityArgsToMeta(m, arg); err != nil {
 		return nil, nil, err
 	}
 	creds, err := makeGRPCCredentials(m)
@@ -236,67 +286,70 @@ func buildGRPCServer(typeOfPlugin pluginType, name string, version int, opts ...
 // generates a response for the initial stdin / stdout handshake, and starts
 // the plugin's gRPC server.
 func StartCollector(plugin Collector, name string, version int, opts ...MetaOpt) int {
-	server, m, err := buildGRPCServer(collectorType, name, version, opts...)
+	appArgs.plugin = plugin
+	appArgs.name = name
+	appArgs.version = version
+	appArgs.opts = opts
+	app.Version = strconv.Itoa(version)
+	err := app.Run(getOSArgs())
 	if err != nil {
-		panic(err)
+		log.WithFields(log.Fields{
+			"_block": "StartCollector",
+		}).Error(err)
+		return 1
 	}
-	proxy := &collectorProxy{
-		plugin:      plugin,
-		pluginProxy: *newPluginProxy(plugin),
-	}
-	rpc.RegisterCollectorServer(server, proxy)
-	return startPlugin(server, *m, &proxy.pluginProxy)
+	return 0
 }
 
 // StartProcessor is given a Processor implementation and its metadata,
 // generates a response for the initial stdin / stdout handshake, and starts
 // the plugin's gRPC server.
 func StartProcessor(plugin Processor, name string, version int, opts ...MetaOpt) int {
-	server, m, err := buildGRPCServer(processorType, name, version, opts...)
+	appArgs.plugin = plugin
+	appArgs.name = name
+	appArgs.version = version
+	appArgs.opts = opts
+	app.Version = strconv.Itoa(version)
+	err := app.Run(getOSArgs())
 	if err != nil {
-		panic(err)
+		log.Error(err)
+		return 1
 	}
-	proxy := &processorProxy{
-		plugin:      plugin,
-		pluginProxy: *newPluginProxy(plugin),
-	}
-	rpc.RegisterProcessorServer(server, proxy)
-	return startPlugin(server, *m, &proxy.pluginProxy)
+	return 0
 }
 
 // StartPublisher is given a Publisher implementation and its metadata,
 // generates a response for the initial stdin / stdout handshake, and starts
 // the plugin's gRPC server.
 func StartPublisher(plugin Publisher, name string, version int, opts ...MetaOpt) int {
-	server, m, err := buildGRPCServer(publisherType, name, version, opts...)
+	appArgs.plugin = plugin
+	appArgs.name = name
+	appArgs.version = version
+	appArgs.opts = opts
+	app.Version = strconv.Itoa(version)
+	err := app.Run(getOSArgs())
 	if err != nil {
-		panic(err)
+		log.Error(err)
+		return 1
 	}
-	proxy := &publisherProxy{
-		plugin:      plugin,
-		pluginProxy: *newPluginProxy(plugin),
-	}
-	rpc.RegisterPublisherServer(server, proxy)
-	return startPlugin(server, *m, &proxy.pluginProxy)
+	return 0
 }
 
 // StartStreamCollector is given a StreamCollector implementation and its metadata,
 // generates a response for the initial stdin / stdout handshake, and starts
 // the plugin's gRPC server.
 func StartStreamCollector(plugin StreamCollector, name string, version int, opts ...MetaOpt) int {
-	opts = append(opts, rpcType(gRPCStream))
-	server, m, err := buildGRPCServer(collectorType, name, version, opts...)
+	appArgs.plugin = plugin
+	appArgs.name = name
+	appArgs.version = version
+	appArgs.opts = opts
+	app.Version = strconv.Itoa(version)
+	err := app.Run(getOSArgs())
 	if err != nil {
-		panic(err)
+		log.Error(err)
+		return 1
 	}
-	proxy := &StreamProxy{
-		plugin:             plugin,
-		pluginProxy:        *newPluginProxy(plugin),
-		maxCollectDuration: defaultMaxCollectDuration,
-		maxMetricsBuffer:   defaultMaxMetricsBuffer,
-	}
-	rpc.RegisterStreamCollectorServer(server, proxy)
-	return startPlugin(server, *m, &proxy.pluginProxy)
+	return 0
 }
 
 type server interface {
@@ -312,88 +365,137 @@ type preamble struct {
 	ErrorMessage  string
 }
 
-func startPlugin(srv server, m meta, p *pluginProxy) int {
-	if flag.Lookup("test.v") != nil {
-		printPreamble(srv, &m, p)
+func startPlugin(c *cli.Context) error {
+	var (
+		server      *grpc.Server
+		meta        *meta
+		pluginProxy *pluginProxy
+	)
+	libInputOutput.setContext(c)
+	arg, err := getArgs()
+	if err != nil {
+		return err
+	}
+	if lvl := c.Int("log-level"); lvl > arg.LogLevel {
+		log.SetLevel(log.Level(lvl))
 	} else {
-		if App == nil {
-			App = cli.NewApp()
+		log.SetLevel(log.Level(arg.LogLevel))
+	}
+	logger := log.WithFields(log.Fields{
+		"_block": "startPlugin",
+	})
+	switch plugin := appArgs.plugin.(type) {
+	case Collector:
+		proxy := &collectorProxy{
+			plugin:      plugin,
+			pluginProxy: *newPluginProxy(plugin),
 		}
-		App.Name = m.Name
-		App.Version = strconv.Itoa(m.Version)
-		App.Usage = "A Snap " + getPluginType(m.Type) + " plugin"
-		App.Flags = append(App.Flags, []cli.Flag{flConfig, flPort, flPingTimeout, flPprof, flTLS, flCertPath, flKeyPath, flStandAlone, flHttpPort}...)
-		App.Action = func(c *cli.Context) error {
-			if standAlone {
-				//if -standalone create http server (through go routine) and print preamble to it.
-				//they can specify port with flag -httpPort for http server
-				if httpPort != 0 {
-					//find port
-					//for now: 8181
-					httpPort = 8181
-				}
-
-				preamble, err := printPreamble(srv, &m, p)
-				if err != nil {
-					log.Fatal(err)
-				}
-
-				go func() {
-					http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-						fmt.Fprintln(w, preamble)
-					})
-
-					listener, err := net.Listen("tcp", fmt.Sprintf(":%d", httpPort))
-					if err != nil {
-						panic("Unable to get open port")
-					}
-					defer listener.Close()
-					err = http.Serve(listener, nil)
-					if err != nil {
-						log.Fatal(err)
-					}
-				}()
-
-				<-p.halt
-			} else if c.NArg() > 0 {
-				_, err := printPreamble(srv, &m, p)
-				if err != nil {
-					log.Printf("Error: %v\n", err)
-					log.Fatal(err)
-				}
-				<-p.halt
-			} else { //implies run diagnostics
-				var c Config
-				if configIn != "" {
-					err := json.Unmarshal([]byte(configIn), &c)
-					if err != nil {
-						return fmt.Errorf("! Error when parsing config. Please ensure your config is valid. \n %v", err)
-					}
-				}
-
-				switch p.plugin.(type) {
-				case Collector:
-					showDiagnostics(m, p, c)
-				case Processor:
-					fmt.Println("Diagnostics not currently available for processor plugins.")
-				case Publisher:
-					fmt.Println("Diagnostics not currently available for publisher plugins.")
-				}
-			}
-			if arg.Pprof {
-				return getPort()
-			}
-
-			return nil
+		pluginProxy = &proxy.pluginProxy
+		server, meta, err = buildGRPCServer(collectorType, appArgs.name, appArgs.version, arg, appArgs.opts...)
+		if err != nil {
+			panic(err)
 		}
-		App.Run(os.Args)
+		rpc.RegisterCollectorServer(server, proxy)
+	case Processor:
+		proxy := &processorProxy{
+			plugin:      plugin,
+			pluginProxy: *newPluginProxy(plugin),
+		}
+		pluginProxy = &proxy.pluginProxy
+		server, meta, err = buildGRPCServer(processorType, appArgs.name, appArgs.version, arg, appArgs.opts...)
+		if err != nil {
+			panic(err)
+		}
+		rpc.RegisterProcessorServer(server, proxy)
+	case Publisher:
+		proxy := &publisherProxy{
+			plugin:      plugin,
+			pluginProxy: *newPluginProxy(plugin),
+		}
+		pluginProxy = &proxy.pluginProxy
+		server, meta, err = buildGRPCServer(publisherType, appArgs.name, appArgs.version, arg, appArgs.opts...)
+		if err != nil {
+			panic(err)
+		}
+		rpc.RegisterPublisherServer(server, proxy)
+	case StreamCollector:
+		proxy := &StreamProxy{
+			plugin:             plugin,
+			pluginProxy:        *newPluginProxy(plugin),
+			maxCollectDuration: defaultMaxCollectDuration,
+			maxMetricsBuffer:   defaultMaxMetricsBuffer,
+		}
+		pluginProxy = &proxy.pluginProxy
+		server, meta, err = buildGRPCServer(publisherType, appArgs.name, appArgs.version, arg, appArgs.opts...)
+		if err != nil {
+			panic(err)
+		}
+		rpc.RegisterStreamCollectorServer(server, proxy)
+	default:
+		logger.WithField("type", fmt.Sprintf("%T", plugin)).Fatal("Unknown plugin type")
 	}
 
-	return 0
+	if c.Bool("stand-alone") {
+		httpPort := c.Int("stand-alone-port")
+		preamble, err := printPreambleAndServe(server, meta, pluginProxy, arg.ListenPort, arg.Pprof)
+		if err != nil {
+			log.Error(err)
+			return err
+		}
+
+		go func() {
+			http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+				fmt.Fprintln(w, preamble)
+			})
+
+			listener, err := net.Listen("tcp", fmt.Sprintf(":%d", httpPort))
+			if err != nil {
+				panic("Unable to get open port")
+			}
+			defer listener.Close()
+			fmt.Printf("Preamble URL: %v\n", listener.Addr().String())
+			err = http.Serve(listener, nil)
+			if err != nil {
+				log.Fatal(err)
+			}
+		}()
+		<-pluginProxy.halt
+
+	} else if libInputOutput.args() > 0 {
+		// snapteld is starting the plugin
+		// presumably with a single arg (valid json)
+		preamble, err := printPreambleAndServe(server, meta, pluginProxy, arg.ListenPort, arg.Pprof)
+		if err != nil {
+			log.Fatal(err)
+		}
+		libInputOutput.printOut(preamble)
+		go pluginProxy.HeartbeatWatch()
+		<-pluginProxy.halt
+
+	} else {
+		// no arguments provided - run and display diagnostics to the user
+		var config Config
+		if c.IsSet("config") {
+			err := json.Unmarshal([]byte(c.String("config")), &config)
+			if err != nil {
+				return fmt.Errorf("! Error when parsing config. Please ensure your config is valid. \n %v", err)
+			}
+		}
+
+		switch pluginProxy.plugin.(type) {
+		case Collector:
+			showDiagnostics(*meta, pluginProxy, config)
+		case Processor:
+			fmt.Println("Diagnostics not currently available for processor plugins.")
+		case Publisher:
+			fmt.Println("Diagnostics not currently available for publisher plugins.")
+		}
+	}
+	return nil
 }
 
-func printPreamble(srv server, m *meta, p *pluginProxy) (string, error) {
-	l, err := net.Listen("tcp", ":"+arg.ListenPort)
+func printPreambleAndServe(srv server, m *meta, p *pluginProxy, port string, isPprof bool) (string, error) {
+	l, err := net.Listen("tcp", fmt.Sprintf(":%v", port))
 	if err != nil {
 		panic("Unable to get open port")
 	}
@@ -402,30 +504,32 @@ func printPreamble(srv server, m *meta, p *pluginProxy) (string, error) {
 	addr := fmt.Sprintf("127.0.0.1:%v", l.Addr().(*net.TCPAddr).Port)
 	lis, err := net.Listen("tcp", addr)
 	if err != nil {
-		// TODO(danielscottt): logging
-		panic(err)
+		return "", err
 	}
 	go func() {
 		err := srv.Serve(lis)
 		if err != nil {
-			panic(err)
+			log.Fatal(err)
 		}
 	}()
+	pprofAddr := "0"
+	if isPprof {
+		pprofAddr, err = startPprof()
+		if err != nil {
+			return "", err
+		}
+	}
 	resp := preamble{
 		Meta:          *m,
 		ListenAddress: addr,
 		Type:          m.Type,
-		PprofAddress:  pprofPort,
+		PprofAddress:  pprofAddr,
 		State:         0, // Hardcode success since panics on err
 	}
 	preambleJSON, err := json.Marshal(resp)
 	if err != nil {
 		panic(err)
 	}
-	libInputOutput.printOut(string(preambleJSON))
-	go p.HeartbeatWatch()
-	// TODO(danielscottt): exit code
-	// <-p.halt
 
 	return string(preambleJSON), nil
 }

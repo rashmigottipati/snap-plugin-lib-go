@@ -59,6 +59,19 @@ var (
 	testFilesToRemove    []string
 )
 
+func init() {
+	// Filter out go test flags
+	getOSArgs = func() []string {
+		args := []string{}
+		for _, v := range os.Args {
+			if !strings.HasPrefix(v, "-test") {
+				args = append(args, v)
+			}
+		}
+		return args
+	}
+}
+
 type testServerSetup struct {
 	prevServerSetup tlsServerSetup
 	caCertPath      string
@@ -409,7 +422,7 @@ func setUpSecureTestcase(serverTLSUp, clientTLSUp bool) {
 	grpcOptsBuilderInUse = newGrpcOptsBuilder()
 	if serverTLSUp {
 		mockInputOutputInUse.mockArgs = strings.Fields(fmt.Sprintf(`mock
-			{"CertPath":"%s","KeyPath":"%s","TLSEnabled":true}`,
+			{"CertPath":"%s","KeyPath":"%s","TLSEnabled":true,"LogLevel":5}`,
 			tlsTestSrv+crtFileExt, tlsTestSrv+keyFileExt))
 		testTLSSetupInUse.caCertPath = tlsTestCA + crtFileExt
 	}

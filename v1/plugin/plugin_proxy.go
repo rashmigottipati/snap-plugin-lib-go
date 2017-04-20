@@ -61,7 +61,7 @@ func newPluginProxy(plugin Plugin) *pluginProxy {
 func defaultPluginProxyCtor(plugin Plugin) *pluginProxy {
 	return &pluginProxy{
 		plugin:              plugin,
-		PingTimeoutDuration: arg.PingTimeoutDuration,
+		PingTimeoutDuration: flPingTimeout.Value,
 		halt:                make(chan struct{}),
 	}
 }
