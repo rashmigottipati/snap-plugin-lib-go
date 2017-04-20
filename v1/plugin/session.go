@@ -38,14 +38,13 @@ type Arg struct {
 
 // getArgs returns plugin args or default ones
 func getArgs() (*Arg, error) {
-	osArgs := libInputOutput.readOSArgs()
+	osArg := libInputOutput.readOSArg()
 	// default parameters - can be parsed as JSON
-	paramStr := "{}"
-	if len(osArgs) > 1 && osArgs[1] != "" {
-		paramStr = osArgs[1]
+	if osArg == "" {
+		osArg = "{}"
 	}
 	arg := &Arg{}
-	err := json.Unmarshal([]byte(paramStr), arg)
+	err := json.Unmarshal([]byte(osArg), arg)
 	if err != nil {
 		return nil, err
 	}

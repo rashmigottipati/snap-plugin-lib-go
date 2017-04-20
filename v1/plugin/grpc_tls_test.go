@@ -199,33 +199,33 @@ func TestIncorrectPluginArgsFail(t *testing.T) {
 	FocusConvey("Intending to start secure plugin server", t, func() {
 		setUpSecureTestcase(true, true)
 		Convey("omitting Cert Path from arguments will make plugin fail", func() {
-			mockInputOutputInUse.mockArgs = strings.Fields(fmt.Sprintf(`mock
+			mockInputOutputInUse.mockArg = fmt.Sprintf(`
 				{"KeyPath":"%s","TLSEnabled":true}`,
-				tlsTestSrv+keyFileExt))
+				tlsTestSrv+keyFileExt)
 			So(func() {
 				startSecureGrpcPlugin(t, &mockCollector{}, collectorType, "mock-coll")
 			}, ShouldPanic)
 		})
 		Convey("omitting Key Path from arguments will make plugin fail", func() {
-			mockInputOutputInUse.mockArgs = strings.Fields(fmt.Sprintf(`mock
+			mockInputOutputInUse.mockArg = fmt.Sprintf(`
 				{"CertPath":"%s","TLSEnabled":true}`,
-				tlsTestSrv+crtFileExt))
+				tlsTestSrv+crtFileExt)
 			So(func() {
 				startSecureGrpcPlugin(t, &mockCollector{}, collectorType, "mock-coll")
 			}, ShouldPanic)
 		})
 		Convey("omitting TLSEnabled flag from arguments will make plugin fail", func() {
-			mockInputOutputInUse.mockArgs = strings.Fields(fmt.Sprintf(`mock
+			mockInputOutputInUse.mockArg = fmt.Sprintf(`
 				{"CertPath":"%s","KeyPath":"%s"}`,
-				tlsTestSrv+crtFileExt, tlsTestSrv+keyFileExt))
+				tlsTestSrv+crtFileExt, tlsTestSrv+keyFileExt)
 			So(func() {
 				startSecureGrpcPlugin(t, &mockCollector{}, collectorType, "mock-coll")
 			}, ShouldPanic)
 		})
 		Convey("adding mismatched certificate and key in arguments will make plugin fail", func() {
-			mockInputOutputInUse.mockArgs = strings.Fields(fmt.Sprintf(`mock
+			mockInputOutputInUse.mockArg = fmt.Sprintf(`
 				{"CertPath":"%s","KeyPath":"%s","TLSEnabled":true}`,
-				tlsTestSrv+crtFileExt, tlsTestCli+keyFileExt))
+				tlsTestSrv+crtFileExt, tlsTestCli+keyFileExt)
 			So(func() {
 				startSecureGrpcPlugin(t, &mockCollector{}, collectorType, "mock-coll")
 			}, ShouldPanic)
@@ -421,9 +421,9 @@ func setUpSecureTestcase(serverTLSUp, clientTLSUp bool) {
 	tlsSetup = testTLSSetupInUse
 	grpcOptsBuilderInUse = newGrpcOptsBuilder()
 	if serverTLSUp {
-		mockInputOutputInUse.mockArgs = strings.Fields(fmt.Sprintf(`mock
+		mockInputOutputInUse.mockArg = fmt.Sprintf(`
 			{"CertPath":"%s","KeyPath":"%s","TLSEnabled":true,"LogLevel":5}`,
-			tlsTestSrv+crtFileExt, tlsTestSrv+keyFileExt))
+			tlsTestSrv+crtFileExt, tlsTestSrv+keyFileExt)
 		testTLSSetupInUse.caCertPath = tlsTestCA + crtFileExt
 	}
 	if clientTLSUp {

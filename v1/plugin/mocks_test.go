@@ -1,4 +1,4 @@
-// +build small medium
+// + build small medium
 
 /*
 http://www.apache.org/licenses/LICENSE-2.0.txt
@@ -229,15 +229,15 @@ func (ms *mockServer) Serve(net.Listener) error {
 }
 
 type mockInputOutput struct {
-	mockArgs        []string
+	mockArg         string
 	output          []string
-	doReadOSArgs    func() []string
+	doReadOSArg     func() string
 	doPrintOut      func(string)
 	prevInputOutput OSInputOutput
 }
 
-func (f *mockInputOutput) readOSArgs() []string {
-	return f.doReadOSArgs()
+func (f *mockInputOutput) readOSArg() string {
+	return f.doReadOSArg()
 }
 
 func (f *mockInputOutput) printOut(data string) {
@@ -253,13 +253,13 @@ func (f *mockInputOutput) args() int {
 }
 
 func newMockInputOutput(prevInputOutput OSInputOutput) *mockInputOutput {
-	mock := mockInputOutput{mockArgs: []string{"mock", "{\"LogLevel\": 5}"}}
+	mock := mockInputOutput{mockArg: "{\"LogLevel\": 5}"}
 	mock.prevInputOutput = prevInputOutput
 	mock.doPrintOut = func(data string) {
 		mock.output = append(mock.output, data)
 	}
-	mock.doReadOSArgs = func() []string {
-		return mock.mockArgs
+	mock.doReadOSArg = func() string {
+		return mock.mockArg
 	}
 	return &mock
 }

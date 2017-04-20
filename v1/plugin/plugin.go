@@ -147,8 +147,8 @@ type tlsServerSetup interface {
 
 // osInputOutput supports interactions with OS for the plugin lib
 type OSInputOutput interface {
-	// readOSArgs gets command line arguments passed to application
-	readOSArgs() []string
+	// readOSArg gets first argument
+	readOSArg() string
 	// printOut outputs given data to application standard output
 	printOut(data string)
 
@@ -166,12 +166,15 @@ type standardInputOutput struct {
 // libInputOutput holds utility used for OS interactions
 var libInputOutput OSInputOutput = &standardInputOutput{}
 
-// readOSArgs implementation that returns application args passed by OS
-func (io *standardInputOutput) readOSArgs() []string {
+// readOSArgs implementation that returns the first arg
+func (io *standardInputOutput) readOSArg() string {
 	if io.context != nil {
-		return io.context.Args().Tail()
+		return io.context.Args().First()
 	}
-	return os.Args
+	if len(os.Args) > 0 {
+		return os.Args[0]
+	}
+	return ""
 }
 
 // printOut implementation that emits data into standard output

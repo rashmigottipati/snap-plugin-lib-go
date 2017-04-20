@@ -75,13 +75,13 @@ func TestParsingArgs(t *testing.T) {
 		mockInputOutput := newMockInputOutput(libInputOutput)
 		libInputOutput = mockInputOutput
 		Convey("ListenPort should be properly parsed", func() {
-			mockInputOutput.mockArgs = strings.Fields(`main {"ListenPort":"4414"}`)
+			mockInputOutput.mockArg = `{"ListenPort":"4414"}`
 			args, err := getArgs()
 			So(err, ShouldBeNil)
 			So(args.ListenPort, ShouldEqual, "4414")
 		})
 		Convey("PingTimeoutDuration should be properly parsed", func() {
-			mockInputOutput.mockArgs = strings.Fields(`main {"PingTimeoutDuration":3141}`)
+			mockInputOutput.mockArg = `{"PingTimeoutDuration":3141}`
 			args, err := getArgs()
 			So(err, ShouldBeNil)
 			So(args.PingTimeoutDuration, ShouldEqual, 3141)
