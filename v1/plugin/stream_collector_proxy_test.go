@@ -54,7 +54,7 @@ func TestStreamMetrics(t *testing.T) {
 			time.Sleep(t)
 		}
 	}
-	Convey("TestStreamMetrics", t, func() {
+	Convey("TestStreamMetrics", t, func(c C) {
 		Convey("Error calling StreamMetrics", func() {
 			sp := StreamProxy{
 				pluginProxy:        *newPluginProxy(newMockErrStreamer()),
@@ -62,17 +62,13 @@ func TestStreamMetrics(t *testing.T) {
 				maxMetricsBuffer:   defaultMaxMetricsBuffer,
 				maxCollectDuration: defaultMaxCollectDuration,
 			}
-			sendChan := make(chan *rpc.CollectReply)
-			recvChan := make(chan *rpc.CollectArg)
-			s := mockStreamServer{
-				sendChan: sendChan,
-				recvChan: recvChan,
-			}
-
-			err := sp.StreamMetrics(s)
+			errChan := make(chan string)
+			sendChan := make(chan []Metric)
+			recvChan := make(chan []Metric)
+			err := sp.plugin.StreamMetrics(recvChan, sendChan, errChan)
 			So(err, ShouldNotBeNil)
 		})
-		Convey("Successful Call to StreamMetrics", func() {
+		Convey("Successful Call to StreamMetrics", func(c C) {
 			// Make a successful call to stream metrics
 			pl := newMockStreamer()
 			sp := StreamProxy{
@@ -90,7 +86,7 @@ func TestStreamMetrics(t *testing.T) {
 			}
 			go func() {
 				err := sp.StreamMetrics(s)
-				So(err, ShouldBeNil)
+				c.So(err, ShouldBeNil)
 			}()
 			Convey("Successful call, stream error", func() {
 				// plugin returns an error.
@@ -99,7 +95,7 @@ func TestStreamMetrics(t *testing.T) {
 				// plugin returns metrics
 			})
 		})
-		Convey("Successfully stream metrics from plugin immediately", func() {
+		Convey("Successfully stream metrics from plugin immediately", func(c C) {
 			pl := newMockStreamerStream(mockStreamAction)
 			sp := StreamProxy{
 				pluginProxy:        *newPluginProxy(newMockStreamer()),
@@ -115,7 +111,7 @@ func TestStreamMetrics(t *testing.T) {
 			}
 			go func() {
 				err := sp.StreamMetrics(s)
-				So(err, ShouldBeNil)
+				c.So(err, ShouldBeNil)
 			}()
 			// Need to give time for streamMetrics call to propagate
 			time.Sleep(time.Millisecond * 100)
@@ -139,7 +135,7 @@ func TestStreamMetrics(t *testing.T) {
 				}
 			})
 		})
-		Convey("Successfully stream metrics from plugin", func() {
+		Convey("Successfully stream metrics from plugin", func(c C) {
 			pl := newMockStreamerStream(mockStreamAction)
 
 			// Set maxMetricsBuffer to define buffer capacity
@@ -157,7 +153,7 @@ func TestStreamMetrics(t *testing.T) {
 			}
 			go func() {
 				err := sp.StreamMetrics(s)
-				So(err, ShouldBeNil)
+				c.So(err, ShouldBeNil)
 			}()
 			// Create mocked metrics
 			metrics := []Metric{}

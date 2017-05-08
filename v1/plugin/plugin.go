@@ -489,7 +489,7 @@ func startPlugin(c *cli.Context) error {
 			maxMetricsBuffer:   defaultMaxMetricsBuffer,
 		}
 		pluginProxy = &proxy.pluginProxy
-		server, meta, err = buildGRPCServer(collectorType, appArgs.name, appArgs.version, arg, appArgs.opts...)
+		server, meta, err = buildGRPCServer(streamCollectorType, appArgs.name, appArgs.version, arg, appArgs.opts...)
 		if err != nil {
 			return cli.NewExitError(err, 2)
 		}
