@@ -19,10 +19,19 @@ var (
 		Name:  "port",
 		Usage: "port GRPC will listen on",
 	}
+	grpcListenAddr = "127.0.0.1"
+	flAddr         = cli.StringFlag{
+		Name:        "addr",
+		Usage:       "addr GRPC will listen on",
+		Value:       grpcListenAddr,
+		Destination: &grpcListenAddr,
+	}
+	LogLevel   = 2
 	flLogLevel = cli.IntFlag{
-		Name:  "log-level",
-		Usage: "log level - 0:panic 1:fatal 2:error 3:warn 4:info 5:debug",
-		Value: 2,
+		Name:        "log-level",
+		Usage:       "log level - 0:panic 1:fatal 2:error 3:warn 4:info 5:debug",
+		Value:       LogLevel,
+		Destination: &LogLevel,
 	}
 	flPprof = cli.BoolFlag{
 		Name:  "pprof",

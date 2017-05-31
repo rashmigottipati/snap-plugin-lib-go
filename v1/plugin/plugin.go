@@ -52,12 +52,11 @@ var (
 		version int
 		opts    []MetaOpt
 	}
-)
-
-func init() {
-	app = cli.NewApp()
-	app.Flags = []cli.Flag{
+	// Flags required by the plugin lib flags - plugin authors can provide their
+	// own flags.
+	Flags []cli.Flag = []cli.Flag{
 		flConfig,
+		flAddr,
 		flPort,
 		flPprof,
 		flTLS,
@@ -68,15 +67,7 @@ func init() {
 		flHTTPPort,
 		flLogLevel,
 	}
-	app.Action = startPlugin
-}
-
-// AddFlag accepts a cli.Flag to the plugins standard flags.
-func AddFlag(flags ...cli.Flag) {
-	for _, f := range flags {
-		app.Flags = append(app.Flags, f)
-	}
-}
+)
 
 // Plugin is the base plugin type. All plugins must implement GetConfigPolicy.
 type Plugin interface {
@@ -343,6 +334,10 @@ func buildGRPCServer(typeOfPlugin pluginType, name string, version int, arg *Arg
 // generates a response for the initial stdin / stdout handshake, and starts
 // the plugin's gRPC server.
 func StartCollector(plugin Collector, name string, version int, opts ...MetaOpt) int {
+	app = cli.NewApp()
+	app.Flags = Flags
+	app.Action = startPlugin
+
 	appArgs.plugin = plugin
 	appArgs.name = name
 	appArgs.version = version
@@ -363,6 +358,10 @@ func StartCollector(plugin Collector, name string, version int, opts ...MetaOpt)
 // generates a response for the initial stdin / stdout handshake, and starts
 // the plugin's gRPC server.
 func StartProcessor(plugin Processor, name string, version int, opts ...MetaOpt) int {
+	app = cli.NewApp()
+	app.Flags = Flags
+	app.Action = startPlugin
+
 	appArgs.plugin = plugin
 	appArgs.name = name
 	appArgs.version = version
@@ -381,6 +380,10 @@ func StartProcessor(plugin Processor, name string, version int, opts ...MetaOpt)
 // generates a response for the initial stdin / stdout handshake, and starts
 // the plugin's gRPC server.
 func StartPublisher(plugin Publisher, name string, version int, opts ...MetaOpt) int {
+	app = cli.NewApp()
+	app.Flags = Flags
+	app.Action = startPlugin
+
 	appArgs.plugin = plugin
 	appArgs.name = name
 	appArgs.version = version
@@ -399,6 +402,10 @@ func StartPublisher(plugin Publisher, name string, version int, opts ...MetaOpt)
 // generates a response for the initial stdin / stdout handshake, and starts
 // the plugin's gRPC server.
 func StartStreamCollector(plugin StreamCollector, name string, version int, opts ...MetaOpt) int {
+	app = cli.NewApp()
+	app.Flags = Flags
+	app.Action = startPlugin
+
 	appArgs.plugin = plugin
 	appArgs.name = name
 	appArgs.version = version
@@ -573,7 +580,7 @@ func printPreambleAndServe(srv server, m *meta, p *pluginProxy, port string, isP
 	}
 	l.Close()
 
-	addr := fmt.Sprintf("127.0.0.1:%v", l.Addr().(*net.TCPAddr).Port)
+	addr := fmt.Sprintf("%s:%v", grpcListenAddr, l.Addr().(*net.TCPAddr).Port)
 	lis, err := net.Listen("tcp", addr)
 	if err != nil {
 		return "", err
@@ -591,9 +598,13 @@ func printPreambleAndServe(srv server, m *meta, p *pluginProxy, port string, isP
 			return "", err
 		}
 	}
+	advertisedAddr, err := getAddr(grpcListenAddr)
+	if err != nil {
+		return "", err
+	}
 	resp := preamble{
 		Meta:          *m,
-		ListenAddress: addr,
+		ListenAddress: fmt.Sprintf("%v:%v", advertisedAddr, l.Addr().(*net.TCPAddr).Port),
 		Type:          m.Type,
 		PprofAddress:  pprofAddr,
 		State:         0, // Hardcode success since panics on err
@@ -604,6 +615,26 @@ func printPreambleAndServe(srv server, m *meta, p *pluginProxy, port string, isP
 	}
 
 	return string(preambleJSON), nil
+}
+
+// getAddr if we were provided the addr 0.0.0.0 we need to determine the
+// address we will advertise to the framework in the premable.
+func getAddr(addr string) (string, error) {
+	if strings.Compare(addr, "0.0.0.0") == 0 {
+		addrs, err := net.InterfaceAddrs()
+		if err != nil {
+			return "", err
+		}
+		for _, address := range addrs {
+			// check the address type and if it is not a loopback the display it
+			if ipnet, ok := address.(*net.IPNet); ok && !ipnet.IP.IsLoopback() {
+				if ipnet.IP.To4() != nil {
+					return ipnet.IP.String(), nil
+				}
+			}
+		}
+	}
+	return addr, nil
 }
 
 func showDiagnostics(m meta, p *pluginProxy, c Config) error {

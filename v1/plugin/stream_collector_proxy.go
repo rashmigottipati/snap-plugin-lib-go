@@ -67,13 +67,6 @@ func (p *StreamProxy) StreamMetrics(stream rpc.StreamCollector_StreamMetricsServ
 	// Metrics out of the plugin into snap.
 	outChan := make(chan []Metric)
 
-	go func() {
-		err := p.plugin.StreamMetrics(inChan, outChan, errChan)
-		if err != nil {
-			log.Fatal(err)
-		}
-	}()
-
 	go p.metricSend(outChan, stream)
 	go p.errorSend(errChan, stream)
 	go p.streamRecv(inChan, stream)
@@ -86,12 +79,17 @@ func (p *StreamProxy) SetConfig(context.Context, *rpc.ConfigMap) (*rpc.ErrReply,
 }
 
 func (p *StreamProxy) errorSend(errChan chan string, stream rpc.StreamCollector_StreamMetricsServer) {
-	for r := range errChan {
-		reply := &rpc.CollectReply{
-			Error: &rpc.ErrReply{Error: r},
-		}
-		if err := stream.Send(reply); err != nil {
-			fmt.Println(err.Error())
+	for {
+		select {
+		case <-stream.Context().Done():
+			return
+		case r := <-errChan:
+			reply := &rpc.CollectReply{
+				Error: &rpc.ErrReply{Error: r},
+			}
+			if err := stream.Send(reply); err != nil {
+				fmt.Println(err.Error())
+			}
 		}
 	}
 }
@@ -136,7 +134,8 @@ func (p *StreamProxy) metricSend(ch chan []Metric, stream rpc.StreamCollector_St
 			// send metrics if maxCollectDuration is reached
 			sendReply(metrics, stream)
 			metrics = []*rpc.Metric{}
-
+		case <-stream.Context().Done():
+			return
 		}
 	}
 }
@@ -148,26 +147,33 @@ func (p *StreamProxy) streamRecv(ch chan []Metric, stream rpc.StreamCollector_St
 		},
 	).Debug("receiving metrics")
 	for {
-		s, err := stream.Recv()
-		if err != nil {
-			fmt.Println(err)
+		select {
+		case <-stream.Context().Done():
+			close(ch)
 			return
-		}
-		if s != nil {
-			if s.MaxMetricsBuffer > 0 {
-				p.setMaxMetricsBuffer(s.MaxMetricsBuffer)
+		default:
+
+			s, err := stream.Recv()
+			if err != nil {
+				log.Debug(err)
+				break
 			}
-			if s.MaxCollectDuration > 0 {
-				p.setMaxCollectDuration(time.Duration(s.MaxCollectDuration))
-			}
-			if s.Metrics_Arg != nil {
-				metrics := []Metric{}
-				for _, mt := range s.Metrics_Arg.Metrics {
-					metric := fromProtoMetric(mt)
-					metrics = append(metrics, metric)
+			if s != nil {
+				if s.MaxMetricsBuffer > 0 {
+					p.setMaxMetricsBuffer(s.MaxMetricsBuffer)
 				}
-				// send requested metrics to be collected into the stream plugin
-				ch <- metrics
+				if s.MaxCollectDuration > 0 {
+					p.setMaxCollectDuration(time.Duration(s.MaxCollectDuration))
+				}
+				if s.Metrics_Arg != nil {
+					metrics := []Metric{}
+					for _, mt := range s.Metrics_Arg.Metrics {
+						metric := fromProtoMetric(mt)
+						metrics = append(metrics, metric)
+					}
+					// send requested metrics to be collected into the stream plugin
+					ch <- metrics
+				}
 			}
 		}
 	}

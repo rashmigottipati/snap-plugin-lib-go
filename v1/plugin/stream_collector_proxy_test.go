@@ -25,6 +25,7 @@ import (
 	"testing"
 	"time"
 
+	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 
 	"github.com/intelsdi-x/snap-plugin-lib-go/v1/plugin/rpc"
@@ -35,6 +36,10 @@ type mockStreamServer struct {
 	grpc.ServerStream
 	sendChan chan *rpc.CollectReply
 	recvChan chan *rpc.CollectArg
+}
+
+func (m mockStreamServer) Context() context.Context {
+	return context.TODO()
 }
 
 func (m mockStreamServer) Send(arg *rpc.CollectReply) error {
