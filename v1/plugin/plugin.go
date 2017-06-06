@@ -370,7 +370,9 @@ func StartProcessor(plugin Processor, name string, version int, opts ...MetaOpt)
 	app.Usage = "a Snap processor"
 	err := app.Run(getOSArgs())
 	if err != nil {
-		log.Error(err)
+		log.WithFields(log.Fields{
+			"_block": "StartProcessor",
+		}).Error(err)
 		return 1
 	}
 	return 0
@@ -392,7 +394,9 @@ func StartPublisher(plugin Publisher, name string, version int, opts ...MetaOpt)
 	app.Usage = "a Snap publisher"
 	err := app.Run(getOSArgs())
 	if err != nil {
-		log.Error(err)
+		log.WithFields(log.Fields{
+			"_block": "StartPublisher",
+		}).Error(err)
 		return 1
 	}
 	return 0
@@ -416,7 +420,9 @@ func StartStreamCollector(plugin StreamCollector, name string, version int, opts
 	app.Usage = "a Snap collector"
 	err := app.Run(getOSArgs())
 	if err != nil {
-		log.Error(err)
+		log.WithFields(log.Fields{
+			"_block": "StartStreamCollector",
+		}).Error(err)
 		return 1
 	}
 	return 0
@@ -509,7 +515,6 @@ func startPlugin(c *cli.Context) error {
 		httpPort := c.Int("stand-alone-port")
 		preamble, err := printPreambleAndServe(server, meta, pluginProxy, arg.ListenPort, arg.Pprof)
 		if err != nil {
-			log.Error(err)
 			return err
 		}
 
