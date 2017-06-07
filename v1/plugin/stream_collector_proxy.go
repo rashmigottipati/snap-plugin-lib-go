@@ -155,7 +155,11 @@ func (p *StreamProxy) streamRecv(ch chan []Metric, stream rpc.StreamCollector_St
 
 			s, err := stream.Recv()
 			if err != nil {
-				log.Debug(err)
+				log.WithFields(
+					log.Fields{
+						"_block": "streamRecv",
+					},
+				).Error(err)
 				break
 			}
 			if s != nil {
@@ -198,6 +202,10 @@ func sendReply(metrics []*rpc.Metric, stream rpc.StreamCollector_StreamMetricsSe
 	}
 
 	if err := stream.Send(reply); err != nil {
-		fmt.Println(err.Error())
+		log.WithFields(
+			log.Fields{
+				"_block": "streamRecv",
+			},
+		).Error(err)
 	}
 }

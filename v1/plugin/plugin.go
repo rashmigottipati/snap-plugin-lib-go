@@ -53,7 +53,8 @@ var (
 		opts    []MetaOpt
 	}
 	// Flags required by the plugin lib flags - plugin authors can provide their
-	// own flags.
+	// own flags.  Checkout https://github.com/intelsdi-x/snap-plugin-lib-go/blob/master/examples/snap-plugin-collector-rand/rand/rand.go
+	// for an example of a plugin adding a custom flag.
 	Flags []cli.Flag = []cli.Flag{
 		flConfig,
 		flAddr,
@@ -579,7 +580,7 @@ func startPlugin(c *cli.Context) error {
 }
 
 func printPreambleAndServe(srv server, m *meta, p *pluginProxy, port string, isPprof bool) (string, error) {
-	l, err := net.Listen("tcp", fmt.Sprintf(":%v", port))
+	l, err := net.Listen("tcp", fmt.Sprintf("%s:%v", grpcListenAddr, port))
 	if err != nil {
 		return "", err
 	}
@@ -623,7 +624,7 @@ func printPreambleAndServe(srv server, m *meta, p *pluginProxy, port string, isP
 }
 
 // getAddr if we were provided the addr 0.0.0.0 we need to determine the
-// address we will advertise to the framework in the premable.
+// address we will advertise to the framework in the preamble.
 func getAddr(addr string) (string, error) {
 	if strings.Compare(addr, "0.0.0.0") == 0 {
 		addrs, err := net.InterfaceAddrs()
