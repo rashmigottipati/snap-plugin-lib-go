@@ -74,10 +74,6 @@ func (p *StreamProxy) StreamMetrics(stream rpc.StreamCollector_StreamMetricsServ
 	return p.plugin.StreamMetrics(inChan, outChan, errChan)
 }
 
-func (p *StreamProxy) SetConfig(context.Context, *rpc.ConfigMap) (*rpc.ErrReply, error) {
-	return nil, nil
-}
-
 func (p *StreamProxy) errorSend(errChan chan string, stream rpc.StreamCollector_StreamMetricsServer) {
 	for {
 		select {
@@ -141,11 +137,12 @@ func (p *StreamProxy) metricSend(ch chan []Metric, stream rpc.StreamCollector_St
 }
 
 func (p *StreamProxy) streamRecv(ch chan []Metric, stream rpc.StreamCollector_StreamMetricsServer) {
-	log.WithFields(
+	logger := log.WithFields(
 		log.Fields{
 			"_block": "streamRecv",
 		},
-	).Debug("receiving metrics")
+	)
+	logger.Debug("receiving metrics")
 	for {
 		select {
 		case <-stream.Context().Done():
@@ -155,18 +152,22 @@ func (p *StreamProxy) streamRecv(ch chan []Metric, stream rpc.StreamCollector_St
 
 			s, err := stream.Recv()
 			if err != nil {
-				log.WithFields(
-					log.Fields{
-						"_block": "streamRecv",
-					},
-				).Error(err)
+				logger.Error(err)
 				break
 			}
 			if s != nil {
 				if s.MaxMetricsBuffer > 0 {
+					logger.WithFields(log.Fields{
+						"option": "max_collect_duration",
+						"value":  s.MaxMetricsBuffer,
+					}).Debug("setting max collect duration option")
 					p.setMaxMetricsBuffer(s.MaxMetricsBuffer)
 				}
 				if s.MaxCollectDuration > 0 {
+					logger.WithFields(log.Fields{
+						"option": "max_metrics_buffer",
+						"value":  fmt.Sprintf("seconds %v", time.Duration(s.MaxCollectDuration).Seconds()),
+					}).Debug("setting max metrics buffer option")
 					p.setMaxCollectDuration(time.Duration(s.MaxCollectDuration))
 				}
 				if s.Metrics_Arg != nil {
