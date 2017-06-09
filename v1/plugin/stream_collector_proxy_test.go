@@ -70,7 +70,7 @@ func TestStreamMetrics(t *testing.T) {
 			errChan := make(chan string)
 			sendChan := make(chan []Metric)
 			recvChan := make(chan []Metric)
-			err := sp.plugin.StreamMetrics(recvChan, sendChan, errChan)
+			err := sp.plugin.StreamMetrics(context.Background(), recvChan, sendChan, errChan)
 			So(err, ShouldNotBeNil)
 		})
 		Convey("Successful Call to StreamMetrics", func(c C) {

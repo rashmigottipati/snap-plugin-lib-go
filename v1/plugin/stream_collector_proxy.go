@@ -19,6 +19,7 @@ const (
 type StreamProxy struct {
 	pluginProxy
 	plugin StreamCollector
+	ctx    context.Context
 
 	// maxMetricsBuffer is the maximum number of metrics the plugin is buffering before sending metrics.
 	// Defaults to zero what means send metrics immediately.
@@ -66,12 +67,14 @@ func (p *StreamProxy) StreamMetrics(stream rpc.StreamCollector_StreamMetricsServ
 	inChan := make(chan []Metric)
 	// Metrics out of the plugin into snap.
 	outChan := make(chan []Metric)
+	// context for communicating that the stream has been closed to the plugin author
 
 	go p.metricSend(outChan, stream)
 	go p.errorSend(errChan, stream)
 	go p.streamRecv(inChan, stream)
 
-	return p.plugin.StreamMetrics(inChan, outChan, errChan)
+	return p.plugin.StreamMetrics(stream.Context(), inChan, outChan, errChan)
+
 }
 
 func (p *StreamProxy) errorSend(errChan chan string, stream rpc.StreamCollector_StreamMetricsServer) {

@@ -20,6 +20,7 @@ limitations under the License.
 package plugin
 
 import (
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
@@ -122,7 +123,7 @@ type StreamCollector interface {
 	//
 	// A channel for error strings that the library will report to snap
 	// as task errors.
-	StreamMetrics(chan []Metric, chan []Metric, chan string) error
+	StreamMetrics(context.Context, chan []Metric, chan []Metric, chan string) error
 	GetMetricTypes(Config) ([]Metric, error)
 }
 
@@ -498,6 +499,7 @@ func startPlugin(c *cli.Context) error {
 	case StreamCollector:
 		proxy := &StreamProxy{
 			plugin:             plugin,
+			ctx:                context.Background(),
 			pluginProxy:        *newPluginProxy(plugin),
 			maxCollectDuration: defaultMaxCollectDuration,
 			maxMetricsBuffer:   defaultMaxMetricsBuffer,
