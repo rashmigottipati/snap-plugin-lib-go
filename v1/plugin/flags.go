@@ -65,6 +65,7 @@ var (
 		Usage: "specify http port when stand-alone is set",
 		Value: 8182,
 	}
+
 	collectDurationStr   = "5s"
 	flMaxCollectDuration = cli.StringFlag{
 		Name:        "max-collect-duration",
