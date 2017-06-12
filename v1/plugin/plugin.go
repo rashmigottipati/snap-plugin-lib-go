@@ -582,13 +582,13 @@ func startPlugin(c *cli.Context) error {
 }
 
 func printPreambleAndServe(srv server, m *meta, p *pluginProxy, port string, isPprof bool) (string, error) {
-	l, err := net.Listen("tcp", fmt.Sprintf("%s:%v", grpcListenAddr, port))
+	l, err := net.Listen("tcp", fmt.Sprintf("%s:%v", ListenAddr, port))
 	if err != nil {
 		return "", err
 	}
 	l.Close()
 
-	addr := fmt.Sprintf("%s:%v", grpcListenAddr, l.Addr().(*net.TCPAddr).Port)
+	addr := fmt.Sprintf("%s:%v", ListenAddr, l.Addr().(*net.TCPAddr).Port)
 	lis, err := net.Listen("tcp", addr)
 	if err != nil {
 		return "", err
@@ -606,7 +606,7 @@ func printPreambleAndServe(srv server, m *meta, p *pluginProxy, port string, isP
 			return "", err
 		}
 	}
-	advertisedAddr, err := getAddr(grpcListenAddr)
+	advertisedAddr, err := getAddr(ListenAddr)
 	if err != nil {
 		return "", err
 	}

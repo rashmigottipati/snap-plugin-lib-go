@@ -19,12 +19,15 @@ var (
 		Name:  "port",
 		Usage: "port GRPC will listen on",
 	}
-	grpcListenAddr = "127.0.0.1"
-	flAddr         = cli.StringFlag{
+	// ListenAddr the address that GRPC will listen on.  Plugin authors can also
+	// use this address if their plugin binds to a local port as it's sometimes
+	// needed to bind to a public interface.
+	ListenAddr = "127.0.0.1"
+	flAddr     = cli.StringFlag{
 		Name:        "addr",
 		Usage:       "addr GRPC will listen on",
-		Value:       grpcListenAddr,
-		Destination: &grpcListenAddr,
+		Value:       ListenAddr,
+		Destination: &ListenAddr,
 	}
 	LogLevel   = 2
 	flLogLevel = cli.IntFlag{
@@ -60,6 +63,6 @@ var (
 	flHTTPPort = cli.IntFlag{
 		Name:  "stand-alone-port",
 		Usage: "specify http port when stand-alone is set",
-		Value: 8181,
+		Value: 8182,
 	}
 )
