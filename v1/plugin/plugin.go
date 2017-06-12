@@ -68,6 +68,8 @@ var (
 		flStandAlone,
 		flHTTPPort,
 		flLogLevel,
+		flMaxCollectDuration,
+		flMaxMetricsBuffer,
 	}
 )
 
@@ -445,9 +447,10 @@ type preamble struct {
 
 func startPlugin(c *cli.Context) error {
 	var (
-		server      *grpc.Server
-		meta        *meta
-		pluginProxy *pluginProxy
+		server           *grpc.Server
+		meta             *meta
+		pluginProxy      *pluginProxy
+		MaxMetricsBuffer int64
 	)
 	libInputOutput.setContext(c)
 	arg, err := processInput(c)
@@ -459,9 +462,10 @@ func startPlugin(c *cli.Context) error {
 	} else {
 		log.SetLevel(log.Level(arg.LogLevel))
 	}
-	logger := log.WithFields(log.Fields{
-		"_block": "startPlugin",
-	})
+	logger := log.WithFields(
+		log.Fields{
+			"_block": "startPlugin",
+		})
 	switch plugin := appArgs.plugin.(type) {
 	case Collector:
 		proxy := &collectorProxy{
@@ -497,13 +501,35 @@ func startPlugin(c *cli.Context) error {
 		}
 		rpc.RegisterPublisherServer(server, proxy)
 	case StreamCollector:
+		if c.IsSet("max-metrics-buffer") {
+			MaxMetricsBuffer = c.Int64("max-metrics-buffer")
+		} else {
+			MaxMetricsBuffer = defaultMaxMetricsBuffer
+		}
+
+		logger.WithFields(log.Fields{
+			"option": "max-metrics-buffer",
+			"value":  MaxMetricsBuffer,
+		}).Debug("setting max metrics buffer")
+
+		maxCollectDuration, err := time.ParseDuration(collectDurationStr)
+		if err != nil {
+			return err
+		}
+
+		logger.WithFields(log.Fields{
+			"option": "max-collect-duration",
+			"value":  maxCollectDuration,
+		}).Debug("setting max collect duration")
+
 		proxy := &StreamProxy{
 			plugin:             plugin,
 			ctx:                context.Background(),
 			pluginProxy:        *newPluginProxy(plugin),
-			maxCollectDuration: defaultMaxCollectDuration,
-			maxMetricsBuffer:   defaultMaxMetricsBuffer,
+			maxCollectDuration: maxCollectDuration,
+			maxMetricsBuffer:   MaxMetricsBuffer,
 		}
+
 		pluginProxy = &proxy.pluginProxy
 		server, meta, err = buildGRPCServer(streamCollectorType, appArgs.name, appArgs.version, arg, appArgs.opts...)
 		if err != nil {
@@ -946,5 +972,14 @@ func processInput(c *cli.Context) (*Arg, error) {
 	if c.IsSet("tls") {
 		arg.TLSEnabled = true
 	}
+
+	if c.IsSet("max-collect-duration") {
+		arg.MaxCollectDuration = c.String("max-collect-duration")
+	}
+
+	if c.IsSet("max-metrics-buffer") {
+		arg.MaxMetricsBuffer = c.Int64("max-metrics-buffer")
+	}
+
 	return processArg(arg)
 }
